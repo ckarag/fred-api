@@ -19,7 +19,8 @@ function [TT, Meta] = fred_api(fred_seriescode, varargin)
 %retrieves all the observations available in FRED for the selected series. 
 %
 %INPUTS:
-%- 'fred_seriescode': The FRED mnemonic(s) of the requested series.
+%- 'fred_code': The FRED mnemonic(s) of the requested series. Can be of
+%               class char, string (array), cell (array of chars).
 %- 'StartDate': Specifies the series starting date. If the input is 
 %               omitted, the function returns the earliest starting date 
 %               available in FRED. The input should be specified as a 
@@ -59,9 +60,10 @@ function [TT, Meta] = fred_api(fred_seriescode, varargin)
 %[TT, Meta] = fred_api(fred_seriescode)
 %[TT, Meta] = fred_api(fred_seriescode, 'StartDate',datetime(2000,1,1), 'EndDate',datetime(2020,3,1))
 
+fred_seriescode = convertCharsToStrings(fred_seriescode);
 
 po = inputParser;
-addRequired(po,'fred_seriescode',@(z) isstring(z) || ischar(z))
+addRequired(po,'fred_seriescode',@(z) isstring(z) || ischar(z) || cell(z))
 addParameter(po,'StartDate',NaT,@(z) isnumeric(z) || isdatetime(z) || isempty(z)) 
 addParameter(po,'EndDate',datetime('today'),@(z) isnumeric(z) || isdatetime(z) || isempty(z)) 
 
@@ -69,22 +71,15 @@ parse(po,fred_seriescode,varargin{:});
 startdate = po.Results.StartDate;
 enddate = po.Results.EndDate;
 
-fred_seriescode = convertCharsToStrings(fred_seriescode);
-
 Nj = length(fred_seriescode);
 if Nj > 1
     TT = timetable();
     TT.Time.Format = 'dd/MM/yyyy'; %Set datetime format of final timetable
     Meta = table();
-    release = struct('firstdate',NaT(1,Nj), 'lastdate',NaT(1,Nj), 'lastupdate',NaT(1,Nj), 'l8ncy',nan(1,Nj));
     for j=1:Nj
-        [tmpTT, tmpMeta, tmprelease] = fred_api(fred_seriescode(j), 'StartDate',startdate,'EndDate',enddate);
+        [tmpTT, tmpMeta] = fred_api(fred_seriescode(j), 'StartDate',startdate,'EndDate',enddate);
         TT = synchronize(TT, tmpTT, 'union', 'fillwithmissing');
         Meta = [Meta; tmpMeta];
-        release.firstdate(j) = tmprelease.firstdate;
-        release.lastdate(j) = tmprelease.lastdate;
-        release.lastupdate(j) = tmprelease.lastupdate;
-        release.l8ncy(j) = tmprelease.l8ncy;
     end
     
 else %Nj == 1
@@ -104,11 +99,8 @@ else %Nj == 1
         dow = fetch(c,fred_seriescode);
     catch
         warning(['Requested security (' char(fred_seriescode) ') is invalid. fetch() returned nothing.']);
-        TT = table();
+        TT = timetable();
         Meta = table();
-        if nargout > 2
-            release = struct([]);
-        end
         close(c)
         return
     end
